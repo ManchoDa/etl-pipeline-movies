@@ -1,96 +1,90 @@
-# 🎬 ETL Pipeline: TMDB 5000 Movie Analysis
+🎬 ETL Pipeline – Flight Data Processing (Python + Pandas)
 
-This project implements a fully modular **ETL (Extract, Transform, Load) pipeline** using Python and Pandas.  
-The goal is to process the **TMDB 5000 Movie Metadata dataset**, demonstrating key data-engineering skills such as:
+This project implements a modular ETL pipeline to process flight performance data using Python, Pandas, and chunk-based processing.
+The goal is to demonstrate key data-engineering skills such as handling large files, cleaning and transforming raw data, enriching datasets, and computing KPIs.
 
-- Handling large CSV files efficiently  
-- Cleaning and transforming semi-structured JSON data  
-- Computing business-oriented KPIs (profitability, director rankings, genre performance)  
-- Designing a clean, maintainable ETL architecture  
+🚀 Main Features
 
----
+Chunk-based loading for efficient memory usage
 
-# 🚀 Features
+Data cleaning (null handling, type fixes, filtering)
 
-- **Automated Kaggle download** (via API token)  
-- **Chunked CSV processing** for memory efficiency  
-- **JSON parsing** from string-encoded fields  
-- **Feature Engineering**: profitability, director extraction, genre normalization  
-- **KPI generation** stored as CSV outputs  
-- **Clean modular code structure** inspired by industry ETL patterns  
+Dataset enrichment using auxiliary lookup tables
 
----
+KPI computation (delays, flight counts, airport performance)
 
-# 🛠️ Quick Setup Guide
+Modular ETL architecture (extract / transform / load)
 
-## 1️⃣ Create and Activate Virtual Environment
+Clear repository structure suitable for real-world pipelines
 
-```bash
-python -m venv venv
-```
-.\venv\Scripts\activate
-
-## 2️⃣ Install Dependencies
-
-pip install -r requirements.txt
-
-3️⃣ Configure Kaggle Authentication
-
-The pipeline downloads the dataset automatically using the Kaggle API.
-
-Go to your Kaggle profile → Account → API → Create New Token
-
-Download kaggle.json
-
-Place it in:
-C:\Users\<your-user>\.kaggle\kaggle.json
-
-▶️ Execution
-Once the environment is active and your Kaggle token is configured:
-(venv) python main.py
-
-## Output
-
-The script will automatically:
-
-Download TMDB files into data/raw/
-
-Process the movie metadata in chunks
-
-Parse nested JSON fields (e.g., genres, crew)
-
-Compute profitability metrics and enriched movie features
-
-Generate final KPI outputs in data/processed/
-
-## Project Structure
-etl-pipeline-tmdb/
+🧩 Project Structure
+etl-pipeline-flights/
 │
 ├── data/
-│   ├── raw/               # Raw Kaggle downloads
-│   ├── processed/         # Final KPIs and cleaned data
+│   ├── raw/               # Raw datasets (input)
+│   ├── processed/         # Cleaned outputs and KPIs
 │
 ├── src/
-│   ├── download.py        # Kaggle download logic
-│   ├── extract.py         # Chunk-based reading
-│   ├── transform.py       # JSON cleaning + feature engineering
-│   ├── load.py            # CSV writing functions
+│   ├── extract.py         # Chunk reader for large CSVs
+│   ├── transform.py       # Cleaning + enrichment + KPIs
+│   ├── load.py            # Save final outputs
 │
 ├── main.py                # Pipeline orchestrator
 ├── requirements.txt
 └── README.md
 
-## KPI Outputs
-1️⃣ Genre Profitability Ranking
+🛠️ Technologies Used
 
-Average profitability by genre
+Python 3.10+
 
-Sorted in descending order
+Pandas
 
-2️⃣ Director Score Ranking
+OS / Pathlib
 
-Average rating for each director
+Chunking techniques for large datasets
 
-Filtered to avoid directors with very few movies
+📦 Input Data
 
-Top 10 output
+The project uses public flight datasets containing:
+
+Column	Description
+FL_DATE	Flight date
+AIRLINE	Carrier code
+ORIGIN_AIRPORT	Departure airport
+DESTINATION_AIRPORT	Arrival airport
+DEPARTURE_DELAY	Delay in minutes
+ARRIVAL_DELAY	Delay in minutes
+CANCELLED	Cancellation flag
+
+You may add more lookup tables such as airlines or airports for enrichment.
+
+▶️ How to Run the Pipeline
+1. Create and activate virtual environment
+python -m venv venv
+venv\Scripts\activate     # Windows
+source venv/bin/activate  # macOS/Linux
+
+2. Install dependencies
+pip install -r requirements.txt
+
+3. Run the pipeline
+python main.py
+
+📝 Output Files
+
+The pipeline generates:
+
+cleaned_flights.csv — Clean and enriched flight dataset
+
+airport_kpis.csv — Airport performance (mean delays, number of flights)
+
+airline_kpis.csv — Airline performance metrics
+
+💡 Skills Demonstrated
+
+✔ Handling large datasets with chunking
+✔ Data cleaning and preprocessing
+✔ KPI design & computation
+✔ Modular code design
+✔ Data enrichment (merging with lookup tables)
+✔ Reproducible project structure
