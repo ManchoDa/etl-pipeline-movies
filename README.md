@@ -1,90 +1,141 @@
-🎬 ETL Pipeline – Flight Data Processing (Python + Pandas)
+# 🎬 ETL Pipeline: TMDB Movie Metadata (Python + Pandas)
 
-This project implements a modular ETL pipeline to process flight performance data using Python, Pandas, and chunk-based processing.
-The goal is to demonstrate key data-engineering skills such as handling large files, cleaning and transforming raw data, enriching datasets, and computing KPIs.
+This project implements a modular **ETL pipeline** (Extract, Transform, Load) to process the **TMDB Movie Metadata dataset**, using Python and Pandas.  
+The goal is to demonstrate key data-engineering skills including:
 
-🚀 Main Features
+- Chunk-based processing for large CSV files  
+- Cleaning and transforming semi-structured fields (JSON-like strings)  
+- Feature engineering (profitability, genre expansion, director extraction)  
+- KPI generation for movie-related insights  
+- A clean, maintainable ETL architecture  
 
-Chunk-based loading for efficient memory usage
+---
 
-Data cleaning (null handling, type fixes, filtering)
+# 🚀 Features
 
-Dataset enrichment using auxiliary lookup tables
+- **Automated download** from Kaggle using API token  
+- **Chunked reading** of large datasets  
+- **Parsing JSON-like columns** (`genres`, `keywords`, `production_companies`, etc.)  
+- **Extraction of key fields** such as director, top genres, popularity metrics  
+- **KPI computation** (profitability, genre ranking, director ranking)  
+- **Modular ETL structure** following best practices  
 
-KPI computation (delays, flight counts, airport performance)
+---
 
-Modular ETL architecture (extract / transform / load)
+# 🧩 Project Structure
 
-Clear repository structure suitable for real-world pipelines
-
-🧩 Project Structure
-etl-pipeline-flights/
+etl-pipeline-movies/
 │
 ├── data/
-│   ├── raw/               # Raw datasets (input)
-│   ├── processed/         # Cleaned outputs and KPIs
+│ ├── raw/ # Raw Kaggle downloads
+│ ├── processed/ # Cleaned data + KPI outputs
 │
 ├── src/
-│   ├── extract.py         # Chunk reader for large CSVs
-│   ├── transform.py       # Cleaning + enrichment + KPIs
-│   ├── load.py            # Save final outputs
+│ ├── download.py # Kaggle file downloader
+│ ├── extract.py # Chunk-based CSV loader
+│ ├── transform.py # Cleaning + JSON parsing + feature engineering
+│ ├── load.py # Save processed datasets
 │
-├── main.py                # Pipeline orchestrator
+├── main.py # Pipeline orchestrator
 ├── requirements.txt
 └── README.md
 
-🛠️ Technologies Used
+yaml
+Copiar código
 
-Python 3.10+
+---
 
-Pandas
+# 🛠️ Technologies Used
 
-OS / Pathlib
+- Python 3.10+  
+- Pandas  
+- JSON parsing  
+- Chunk processing  
+- OS / Pathlib  
 
-Chunking techniques for large datasets
+---
 
-📦 Input Data
+# 📦 Dataset: TMDB Movie Metadata
 
-The project uses public flight datasets containing:
+The dataset contains over 10,000 movies and multiple semi-structured fields.
 
-Column	Description
-FL_DATE	Flight date
-AIRLINE	Carrier code
-ORIGIN_AIRPORT	Departure airport
-DESTINATION_AIRPORT	Arrival airport
-DEPARTURE_DELAY	Delay in minutes
-ARRIVAL_DELAY	Delay in minutes
-CANCELLED	Cancellation flag
+### Key Columns:
 
-You may add more lookup tables such as airlines or airports for enrichment.
+| Column | Description |
+|--------|-------------|
+| `id` | Movie ID |
+| `title` | Movie title |
+| `release_date` | Release date |
+| `genres` | List of genres (JSON string) |
+| `keywords` | Movie tags (JSON string) |
+| `original_language` | Language code |
+| `budget` | Movie budget |
+| `revenue` | Movie revenue |
+| `vote_average` | TMDB rating |
+| `vote_count` | Number of votes |
+| `credits` | Cast and crew (JSON string) |
 
-▶️ How to Run the Pipeline
-1. Create and activate virtual environment
+---
+
+# 🧠 Skills Demonstrated
+
+### ✔ JSON Parsing & Normalization
+- `genres` → expanded into multiple rows or extracted main genre  
+- `keywords` → flattened  
+- `credits` → director extracted from crew list  
+ 
+
+### ✔ KPI Computation
+Two main ranking outputs:
+
+| File | Description |
+|------|-------------|
+| `genre_ranking_tmdb_movie_kpis.csv` | Avg profitability by genre |
+| `director_ranking_tmdb_movie_kpis.csv` | Top directors by vote average |
+
+---
+
+# 🛠️ Setup Instructions
+
+## 1️⃣ Create the virtual environment
+
+```bash
 python -m venv venv
-venv\Scripts\activate     # Windows
-source venv/bin/activate  # macOS/Linux
+```
+source venv/bin/activate
+2️⃣ Install requirements
+bash
 
-2. Install dependencies
 pip install -r requirements.txt
+3️⃣ Configure Kaggle authentication
 
-3. Run the pipeline
+Go to your Kaggle profile → Account
+
+Click Create API Token
+
+Save the generated kaggle.json here:
+
+C:\\Users\\<your-user>\\.kaggle\\kaggle.json
+▶️ Running the pipeline
+Once everything is ready:
+
+bash
 python main.py
+The pipeline will:
 
-📝 Output Files
+Download the dataset into data/raw/
 
-The pipeline generates:
+Process data chunk by chunk
 
-cleaned_flights.csv — Clean and enriched flight dataset
+Parse JSON-like fields
 
-airport_kpis.csv — Airport performance (mean delays, number of flights)
+Compute KPIs
 
-airline_kpis.csv — Airline performance metrics
+Save outputs into data/processed/
 
-💡 Skills Demonstrated
+📄 Output Files
+cleaned_movies.csv — cleaned and enriched dataset
 
-✔ Handling large datasets with chunking
-✔ Data cleaning and preprocessing
-✔ KPI design & computation
-✔ Modular code design
-✔ Data enrichment (merging with lookup tables)
-✔ Reproducible project structure
+genre_ranking_tmdb_movie_kpis.csv — genre profitability ranking
+
+director_ranking_tmdb_movie_kpis.csv — top directors based on ratings
