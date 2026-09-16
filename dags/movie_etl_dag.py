@@ -23,6 +23,9 @@ with DAG(
 ) as dag:
 
     def download_data():
+        import os
+        import sys
+
         from src.download import download_dataset
 
         download_dataset(
@@ -35,7 +38,43 @@ with DAG(
         )
 
     def extract_data():
+        import os
         from src.extract import extract_chunks, extract_dim
+
+        credits_path = "data/raw/tmdb_5000_credits.csv"
+        movies_path = "data/raw/tmdb_5000_movies.csv"
+
+
+        if not os.path.exists(credits_path):
+            raise FileNotFoundError(
+                f"Credits file not found: {credits_path}"
+            )
+
+        if not os.path.exists(movies_path):
+            raise FileNotFoundError(
+                f"Movies file not found: {movies_path}"
+            )
+
+        credits_df = extract_dim(credits_path)
+        movies_chunks = extract_chunks(movies_path)
+        
+        if credits_df.empty:
+            raise ValueError("Credits extraction failed.")
+
+        if not movies_chunks:
+            raise ValueError("Movie extraction failed.")
+
+        print(
+            f"Extraction successful: "
+            f"{len(movies_chunks)} movie chunks, "
+            f"{len(credits_df)} credit records."
+        )
+
+    def transform_data():
+        import os
+        from src.extract import extract_chunks, extract_dim
+        from src.transform import transform_chunk
+        from src.load import save_output
 
         credits_path = "data/raw/tmdb_5000_credits.csv"
         movies_path = "data/raw/tmdb_5000_movies.csv"
@@ -43,31 +82,11 @@ with DAG(
         credits_df = extract_dim(credits_path)
         movies_chunks = extract_chunks(movies_path)
 
+        if credits_df.empty:
+            raise ValueError("Credits extraction failed.")
+
         if not movies_chunks:
             raise ValueError("Movie extraction failed.")
-
-        # Guardamos temporalmente los datos para la siguiente task.
-        # Más adelante sustituiremos esto por un almacenamiento mejor.
-        import pickle
-
-        with open("/tmp/credits_df.pkl", "wb") as f:
-            pickle.dump(credits_df, f)
-
-        with open("/tmp/movies_chunks.pkl", "wb") as f:
-            pickle.dump(movies_chunks, f)
-
-    def transform_data():
-        import os
-        import pickle
-
-        from src.transform import transform_chunk
-        from src.load import save_output
-
-        with open("/tmp/credits_df.pkl", "rb") as f:
-            credits_df = pickle.load(f)
-
-        with open("/tmp/movies_chunks.pkl", "rb") as f:
-            movies_chunks = pickle.load(f)
 
         processed_path = "data/processed/processed_movies_data.csv"
 
@@ -82,6 +101,10 @@ with DAG(
                 processed_path,
                 append=(i > 0),
             )
+        print(
+        f"Transformation completed: "
+        f"{len(movies_chunks)} chunks processed."
+    )
 
     def calculate_kpis():
         import pandas as pd
