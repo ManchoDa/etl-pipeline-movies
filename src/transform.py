@@ -14,9 +14,8 @@ def get_first_value(json_str, key_name='name'):
         list_of_dicts = ast.literal_eval(json_str)
         if list_of_dicts:
             return list_of_dicts[0][key_name]
-    except:
-        pass
-    return np.nan # Devuelve NaN si falla la conversión o no hay datos
+    except (ValueError, SyntaxError, KeyError, IndexError, TypeError):
+        return np.nan
 
 def get_director(crew_json):
     """
@@ -27,9 +26,8 @@ def get_director(crew_json):
         for crew_member in list_of_dicts:
             if crew_member.get('job') == 'Director':
                 return crew_member.get('name')
-    except:
-        pass
-    return np.nan
+    except (ValueError, SyntaxError, KeyError, IndexError, TypeError):
+        return np.nan
 
 def transform_chunk(df: pd.DataFrame, credits_df: pd.DataFrame) -> pd.DataFrame:
     """Realiza la limpieza y Feature Engineering de un chunk de datos de películas."""

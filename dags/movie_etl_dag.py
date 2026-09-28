@@ -1,8 +1,34 @@
+# dags/movie_etl_pipeline.py
+"""
+ETL pipeline for TMDB movie metadata.
+
+Flujo: download -> extract (a staging) -> transform (a processed) -> calculate_kpis
+"""
+from __future__ import annotations
+
+import logging
+import os
 from datetime import datetime, timedelta
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.sdk import dag, task
+from airflow.exceptions import AirflowFailException
+from airflow.models import Variable
 
+logger = logging.getLogger(__name__)
+
+# --- Configuración centralizada ---
+RAW_DIR = "data/raw/"
+STAGING_DIR = "data/staging/"
+PROCESSED_DIR = "data/processed/"
+
+DATASET_SLUG = "tmdb/tmdb-movie-metadata"
+MOVIES_FILE = "tmdb_5000_movies.csv"
+CREDITS_FILE = "tmdb_5000_credits.csv"
+
+STAGING_MOVIES_PATH = os.path.join(STAGING_DIR, "movies_staged.csv")
+STAGING_CREDITS_PATH = os.path.join(STAGING_DIR, "credits_staged.csv")
+PROCESSED_MOVIES_PATH = os.path.join(PROCESSED_DIR, "processed_movies_data.csv")
+KPI_OUTPUT_PATH = os.path.join(PROCESSED_DIR, "tmdb_movie_kpis.csv")
 
 default_args = {
     "owner": "danie",
@@ -12,135 +38,131 @@ default_args = {
 }
 
 
-with DAG(
+@dag(
     dag_id="movie_etl_pipeline",
-    description="ETL pipeline for TMDB movie metadata",
+    description="ETL pipeline for TMDB movie metadata: download, extract, transform, and compute KPIs.",
     default_args=default_args,
     start_date=datetime(2026, 1, 1),
     schedule=None,
     catchup=False,
     tags=["movies", "etl", "pandas"],
-) as dag:
+)
+def movie_etl_pipeline():
+    """
+    Pipeline TMDB: descarga el dataset de Kaggle, extrae los CSV raw a una
+    capa de staging (tipos/columnas optimizados), transforma y enriquece
+    los datos por chunks, y calcula KPIs de negocio (rentabilidad por
+    género, ranking de directores).
+    """
 
-    def download_data():
-        import os
-        import sys
-
+    @task
+    def download_data() -> None:
+        """Descarga los CSV de Kaggle si no existen ya en RAW_DIR."""
         from src.download import download_dataset
 
-        download_dataset(
-            "tmdb/tmdb-movie-metadata",
-            [
-                "tmdb_5000_movies.csv",
-                "tmdb_5000_credits.csv",
-            ],
-            "data/raw/",
-        )
+        download_dataset(DATASET_SLUG, [MOVIES_FILE, CREDITS_FILE], RAW_DIR)
 
-    def extract_data():
-        import os
+    @task
+    def extract_data() -> dict:
+        """
+        Lee los CSV raw (con los dtypes/columnas ya optimizados definidos
+        en src/extract.py) y materializa el resultado en la capa de
+        staging, para que transform_data no tenga que releer el raw.
+        """
         from src.extract import extract_chunks, extract_dim
-
-        credits_path = "data/raw/tmdb_5000_credits.csv"
-        movies_path = "data/raw/tmdb_5000_movies.csv"
-
-
-        if not os.path.exists(credits_path):
-            raise FileNotFoundError(
-                f"Credits file not found: {credits_path}"
-            )
-
-        if not os.path.exists(movies_path):
-            raise FileNotFoundError(
-                f"Movies file not found: {movies_path}"
-            )
-
-        credits_df = extract_dim(credits_path)
-        movies_chunks = extract_chunks(movies_path)
-        
-        if credits_df.empty:
-            raise ValueError("Credits extraction failed.")
-
-        if not movies_chunks:
-            raise ValueError("Movie extraction failed.")
-
-        print(
-            f"Extraction successful: "
-            f"{len(movies_chunks)} movie chunks, "
-            f"{len(credits_df)} credit records."
-        )
-
-    def transform_data():
-        import os
-        from src.extract import extract_chunks, extract_dim
-        from src.transform import transform_chunk
         from src.load import save_output
 
-        credits_path = "data/raw/tmdb_5000_credits.csv"
-        movies_path = "data/raw/tmdb_5000_movies.csv"
+        movies_path = os.path.join(RAW_DIR, MOVIES_FILE)
+        credits_path = os.path.join(RAW_DIR, CREDITS_FILE)
+
+        for path in (movies_path, credits_path):
+            if not os.path.exists(path):
+                raise AirflowFailException(f"Required raw file missing: {path}")
 
         credits_df = extract_dim(credits_path)
-        movies_chunks = extract_chunks(movies_path)
-
         if credits_df.empty:
-            raise ValueError("Credits extraction failed.")
+            raise AirflowFailException("Credits extraction returned an empty DataFrame.")
 
+        movies_chunks = extract_chunks(movies_path)
         if not movies_chunks:
-            raise ValueError("Movie extraction failed.")
+            raise AirflowFailException("Movies extraction returned no chunks.")
 
-        processed_path = "data/processed/processed_movies_data.csv"
+        # Persistimos el resultado de la extracción en staging
+        save_output(credits_df, STAGING_CREDITS_PATH)
 
-        if os.path.exists(processed_path):
-            os.remove(processed_path)
-
+        if os.path.exists(STAGING_MOVIES_PATH):
+            os.remove(STAGING_MOVIES_PATH)
         for i, chunk in enumerate(movies_chunks):
-            cleaned_chunk = transform_chunk(chunk, credits_df)
+            save_output(chunk, STAGING_MOVIES_PATH, append=(i > 0))
 
-            save_output(
-                cleaned_chunk,
-                processed_path,
-                append=(i > 0),
-            )
-        print(
-        f"Transformation completed: "
-        f"{len(movies_chunks)} chunks processed."
-    )
+        logger.info(
+            "Extract completed: %s movie chunks, %s credit rows -> staged in %s",
+            len(movies_chunks), len(credits_df), STAGING_DIR,
+        )
 
-    def calculate_kpis():
+        return {"credits_path": STAGING_CREDITS_PATH, "movies_path": STAGING_MOVIES_PATH}
+
+    @task
+    def transform_data(staged_paths: dict) -> str:
+        """
+        Lee de staging (no del raw), limpia y enriquece los datos por
+        chunks, y guarda el resultado consolidado en PROCESSED_MOVIES_PATH.
+        Devuelve solo la ruta del CSV procesado (no el DataFrame) para
+        mantener el XCom liviano.
+        """
         import pandas as pd
 
-        from src.transform import calculate_kpis
         from src.load import save_output
+        from src.transform import transform_chunk
 
-        processed_path = "data/processed/processed_movies_data.csv"
+        credits_df = pd.read_csv(staged_paths["credits_path"])
 
-        df = pd.read_csv(processed_path)
+        if os.path.exists(PROCESSED_MOVIES_PATH):
+            os.remove(PROCESSED_MOVIES_PATH)
 
-        kpis_df = calculate_kpis(df)
+        chunk_iter = pd.read_csv(staged_paths["movies_path"], chunksize=1000)
+        total_rows = 0
+        for i, chunk in enumerate(chunk_iter):
+            cleaned_chunk = transform_chunk(chunk, credits_df)
+            total_rows += len(cleaned_chunk)
+            save_output(cleaned_chunk, PROCESSED_MOVIES_PATH, append=(i > 0))
 
-        save_output(
-            kpis_df,
-            "data/processed/tmdb_movie_kpis.csv",
+        if total_rows == 0:
+            raise AirflowFailException(
+                "Transform produced zero rows — check upstream filters "
+                "(main_genre/release_year) in transform_chunk."
+            )
+
+        logger.info(
+            "Transform completed: %s rows written to %s",
+            total_rows, PROCESSED_MOVIES_PATH,
         )
 
-    download_task = PythonOperator(
-        task_id="download_data",
-        python_callable=download_data,
-    )
+        return PROCESSED_MOVIES_PATH
 
-    extract_task = PythonOperator(
-        task_id="extract_data",
-        python_callable=extract_data,
-    )
+    @task
+    def calculate_kpis(processed_path: str) -> None:
+        """Lee el dataset procesado y calcula/guarda los KPIs de negocio."""
+        import pandas as pd
 
-    transform_task = PythonOperator(
-        task_id="transform_data",
-        python_callable=transform_data,
-    )
+        from src.load import save_output
+        from src.transform import calculate_kpis as compute_kpis
 
-    kpi_task = PythonOperator(
-        task_id="calculate_kpis",
-        python_callable=calculate_kpis,
-    )
+        df = pd.read_csv(processed_path)
+        if df.empty:
+            raise AirflowFailException(f"No data found at {processed_path}")
 
-    download_task >> extract_task >> transform_task >> kpi_task
+        kpis = compute_kpis(df)
+        save_output(kpis, KPI_OUTPUT_PATH)
+        logger.info("KPIs saved with base path %s", KPI_OUTPUT_PATH)
+
+    # --- Orquestación ---
+    downloaded = download_data()
+    staged = extract_data()
+    processed = transform_data(staged)
+    calculate_kpis(processed)
+
+    downloaded >> staged
+
+
+movie_etl_pipeline()
