@@ -8,6 +8,7 @@ __pycache__/
 venv/
 .env/
 .env
+.venv/
 
 # =========================
 # Airflow
@@ -31,3 +32,7 @@ data/
 data/raw/*
 data/processed/*
 kaggle.json
+
+.pytest_cache/
+.coverage
+minio.license
