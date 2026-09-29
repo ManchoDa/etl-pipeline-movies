@@ -1,141 +1,109 @@
-# 🎬 ETL Pipeline: TMDB Movie Metadata (Python + Pandas)
+# 🎬 TMDB Movie ETL Pipeline
 
-This project implements a modular **ETL pipeline** (Extract, Transform, Load) to process the **TMDB Movie Metadata dataset**, using Python and Pandas.  
-The goal is to demonstrate key data-engineering skills including:
+Pipeline de datos que descarga metadatos de películas de [Kaggle (TMDB 5000)](https://www.kaggle.com/datasets/tmdb/tmdb-movie-metadata), los limpia y enriquece, y calcula KPIs de negocio (rentabilidad por género, ranking de directores).
 
-- Chunk-based processing for large CSV files  
-- Cleaning and transforming semi-structured fields (JSON-like strings)  
-- Feature engineering (profitability, genre expansion, director extraction)  
-- KPI generation for movie-related insights  
-- A clean, maintainable ETL architecture  
+Orquestado con **Apache Airflow** sobre un **data lake compatible con S3** (SeaweedFS en local), todo en **Docker**. El diseño reproduce, a pequeña escala, un patrón habitual en AWS: `S3 (raw/staging/processed) + orquestador + procesamiento por lotes`.
 
----
+## Arquitectura
 
-# 🚀 Features
+```mermaid
+flowchart LR
+    K[Kaggle API] -->|download_data| RAW[("s3://movies-lake/raw/")]
+    RAW -->|extract_data| STG[("s3://movies-lake/staging/")]
+    STG -->|transform_data| PROC[("s3://movies-lake/processed/")]
+    PROC -->|calculate_kpis| KPI[("s3://movies-lake/processed/kpis/")]
 
-- **Automated download** from Kaggle using API token  
-- **Chunked reading** of large datasets  
-- **Parsing JSON-like columns** (`genres`, `keywords`, `production_companies`, etc.)  
-- **Extraction of key fields** such as director, top genres, popularity metrics  
-- **KPI computation** (profitability, genre ranking, director ranking)  
-- **Modular ETL structure** following best practices  
+    subgraph Airflow [Airflow · DAG movie_etl_pipeline]
+        direction LR
+        T1[download_data] --> T2[extract_data] --> T3[transform_data] --> T4[calculate_kpis]
+    end
+```
 
----
+| Zona | Contenido |
+|---|---|
+| `raw/` | CSVs originales de Kaggle, sin tocar |
+| `staging/` | Datos ya tipados/filtrados por columnas (`extract.py`), listos para transformar |
+| `processed/movies/` | Datos limpios y enriquecidos: género principal, director, año, rentabilidad |
+| `processed/kpis/` | Rentabilidad media por género y ranking de directores |
 
-# 🧩 Project Structure
+Los datos viajan siempre por S3 entre tasks de Airflow (nunca en memoria compartida), y como los objetos S3 son inmutables, cada chunk se guarda como un archivo `part-0000.csv`, `part-0001.csv`... dentro de su prefijo.
 
+## Estructura del proyecto
+
+```
 etl-pipeline-movies/
-│
-├── data/
-│ ├── raw/ # Raw Kaggle downloads
-│ ├── processed/ # Cleaned data + KPI outputs
-│
+├── dags/
+│   └── movie_etl_pipeline.py   # Orquestación: define las tasks y su orden
 ├── src/
-│ ├── download.py # Kaggle file downloader
-│ ├── extract.py # Chunk-based CSV loader
-│ ├── transform.py # Cleaning + JSON parsing + feature engineering
-│ ├── load.py # Save processed datasets
-│
-├── main.py # Pipeline orchestrator
+│   ├── config.py                # Configuración centralizada (rutas, bucket, dataset)
+│   ├── storage.py               # Funciones S3 (put_df, get_df, list_keys...)
+│   ├── download.py              # Descarga desde Kaggle
+│   ├── extract.py               # Lectura por chunks con tipos/columnas optimizados
+│   ├── transform.py             # Limpieza, parseo de JSON, feature engineering
+│   └── load.py                  # Guardado de resultados
+├── tests/
+│   ├── conftest.py
+│   ├── test_transform.py
+│   ├── test_extract.py
+│   └── test_storage.py
+├── config/, plugins/             # Carpetas estándar de Airflow (Docker)
+├── Dockerfile
+├── docker-compose.yaml           # Airflow + Postgres (metadata) + SeaweedFS (S3)
 ├── requirements.txt
-└── README.md
+├── requirements-dev.txt
+├── pytest.ini
+└── .env.example
+```
 
-yaml
-Copiar código
+`src/` contiene toda la lógica de negocio y no depende de Airflow: se puede testear e importar de forma aislada. `dags/` solo orquesta: decide qué se ejecuta, en qué orden, y qué pasa si algo falla.
 
----
+## Cómo ejecutarlo
 
-# 🛠️ Technologies Used
+### 1. Requisitos
+- Docker Desktop
+- Una cuenta de Kaggle con token API (`kaggle.json`)
 
-- Python 3.10+  
-- Pandas  
-- JSON parsing  
-- Chunk processing  
-- OS / Pathlib  
+### 2. Configuración
+```bash
+cp .env.example .env
+# Edita .env con tus credenciales (S3, Kaggle)
+```
 
----
+### 3. Levantar todo
+```bash
+docker compose up -d --build
+```
 
-# 📦 Dataset: TMDB Movie Metadata
+Esto levanta:
+- **Airflow** (webserver, scheduler) → http://localhost:8080
+- **SeaweedFS** (almacenamiento S3) → consola en http://localhost:8888/buckets/
+- **Postgres** (base de datos de metadata de Airflow)
 
-The dataset contains over 10,000 movies and multiple semi-structured fields.
+### 4. Ejecutar el pipeline
+Entra en http://localhost:8080, activa el DAG `movie_etl_pipeline` y lánzalo con ▶ ("Trigger DAG"). Las 4 tasks se ejecutan en orden: `download_data → extract_data → transform_data → calculate_kpis`.
 
-### Key Columns:
+Puedes seguir los datos generándose en tiempo real en el explorador de SeaweedFS (http://localhost:8888/buckets/movies-lake/).
 
-| Column | Description |
-|--------|-------------|
-| `id` | Movie ID |
-| `title` | Movie title |
-| `release_date` | Release date |
-| `genres` | List of genres (JSON string) |
-| `keywords` | Movie tags (JSON string) |
-| `original_language` | Language code |
-| `budget` | Movie budget |
-| `revenue` | Movie revenue |
-| `vote_average` | TMDB rating |
-| `vote_count` | Number of votes |
-| `credits` | Cast and crew (JSON string) |
-
----
-
-# 🧠 Skills Demonstrated
-
-### ✔ JSON Parsing & Normalization
-- `genres` → expanded into multiple rows or extracted main genre  
-- `keywords` → flattened  
-- `credits` → director extracted from crew list  
- 
-
-### ✔ KPI Computation
-Two main ranking outputs:
-
-| File | Description |
-|------|-------------|
-| `genre_ranking_tmdb_movie_kpis.csv` | Avg profitability by genre |
-| `director_ranking_tmdb_movie_kpis.csv` | Top directors by vote average |
-
----
-
-# 🛠️ Setup Instructions
-
-## 1️⃣ Create the virtual environment
+## Tests
 
 ```bash
-python -m venv venv
+pip install -r requirements-dev.txt
+pytest -v
 ```
-source venv/bin/activate
-2️⃣ Install requirements
-bash
 
-pip install -r requirements.txt
-3️⃣ Configure Kaggle authentication
+Los tests cubren la lógica de transformación (parseo de JSON, feature engineering, KPIs) y la capa de almacenamiento S3, usando mocks para no depender de infraestructura real al ejecutarlos.
 
-Go to your Kaggle profile → Account
+## Qué demuestra este proyecto
 
-Click Create API Token
+- ETL modular (extract/transform/load separados, testeables de forma independiente)
+- Orquestación con Airflow (TaskFlow API), con reintentos y logging por task
+- Patrón de data lake (raw → staging → processed) sobre almacenamiento S3-compatible
+- Manejo correcto de la inmutabilidad de objetos en S3 (particionado por chunks)
+- Entorno reproducible con Docker Compose
+- Tests unitarios con `pytest` y mocking de servicios externos (`boto3`)
 
-Save the generated kaggle.json here:
+## Próximos pasos
 
-C:\\Users\\<your-user>\\.kaggle\\kaggle.json
-▶️ Running the pipeline
-Once everything is ready:
-
-bash
-python main.py
-The pipeline will:
-
-Download the dataset into data/raw/
-
-Process data chunk by chunk
-
-Parse JSON-like fields
-
-Compute KPIs
-
-Save outputs into data/processed/
-
-📄 Output Files
-cleaned_movies.csv — cleaned and enriched dataset
-
-genre_ranking_tmdb_movie_kpis.csv — genre profitability ranking
-
-director_ranking_tmdb_movie_kpis.csv — top directors based on ratings
+- [ ] Cargar los KPIs finales en Postgres en lugar de CSV
+- [ ] CI con GitHub Actions (lint + tests en cada push)
+- [ ] Programar el DAG con `schedule` en vez de ejecución manual
