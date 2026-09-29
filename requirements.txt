@@ -1,2 +1,4 @@
 pandas
 kaggle
+pytest>=8.0
+boto3
