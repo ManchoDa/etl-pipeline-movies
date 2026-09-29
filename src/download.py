@@ -1,6 +1,15 @@
 import os
 import shutil
 from kaggle.api.kaggle_api_extended import KaggleApi
+# Workaround: kaggle-api crea su carpeta de configuración con os.makedirs()
+# sin exist_ok=True al importarse. Si el contenedor de Airflow reutiliza el
+# mismo filesystem entre ejecuciones (como pasa con docker compose), la
+# segunda vez esa carpeta ya existe y el import falla con FileExistsError.
+# Forzamos exist_ok=True solo mientras dura este import concreto.
+_original_makedirs = os.makedirs
+os.makedirs = lambda path, mode=0o777, exist_ok=False: _original_makedirs(path, mode=mode, exist_ok=True)
+from kaggle.api.kaggle_api_extended import KaggleApi
+os.makedirs = _original_makedirs
 def download_dataset(dataset_slug: str, file_names: list[str], target_dir: str):
     """Descarga archivos específicos de un dataset de Kaggle si no existen."""
     
